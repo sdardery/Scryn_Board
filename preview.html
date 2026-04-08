@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Scryn Board</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+<style>
+body { font-family: Arial; background:#f4f5f7; margin:0; }
+.header { background:#111827; color:white; padding:15px; font-size:20px; }
+
+.board {
+  display:flex;
+  gap:15px;
+  padding:15px;
+  height:calc(100vh - 140px);
+}
+
+.column {
+  background:#e5e7eb;
+  flex:1;
+  border-radius:10px;
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+}
+
+.task-list {
+  flex:1;
+  min-height:50px;
+}
+
+.task {
+  background:white;
+  padding:10px;
+  border-radius:8px;
+  margin-bottom:10px;
+  cursor:grab;
+}
+
+.task small {
+  display:block;
+  color:#555;
+}
+
+.cancelled {
+  text-decoration: line-through;
+  opacity: 0.6;
+  background: #ffe5e5;
+}
+
+button, input, select, textarea {
+  margin:5px;
+  padding:6px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">🔥 Scryn Board</div>
+
+<div>
+<input id="title" placeholder="Task Title">
+<input id="assignee" placeholder="Assignee">
+
+<select id="priority">
+<option>Low</option>
+<option>Medium</option>
+<option>High</option>
+</select>
+
+<br>
+
+<input type="date" id="start_date">
+<input type="date" id="due_date">
+
+<button onclick="addTask()">Add Task</button>
+</div>
+
+<div class="board" id="board"></div>
+
+<!-- MODAL -->
+<div id="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5);">
+  <div onclick="event.stopPropagation()" style="background:white; padding:20px; width:500px; margin:80px auto; border-radius:10px; max-height:85vh; overflow:auto;">
+    
+    <h3>Edit Task</h3>
+
+    <label>Title</label>
+    <input id="edit_title" style="width:100%">
+
+    <label>Assignee</label>
+    <input id="edit_assignee" style="width:100%">
+
+    <label>Priority</label>
+    <select id="edit_priority" style="width:100%">
+      <option>Low</option>
+      <option>Medium</option>
+      <option>High</option>
+    </select>
+
+    <label>Due Date</label>
+    <input type="date" id="edit_due">
+
+    <button onclick="saveTaskEdits()">Save Changes</button>
+
+    <hr>
+
+    <textarea id="notesInput" placeholder="Add note..." style="width:100%;height:80px;"></textarea>
+    <button onclick="addNote()">Add Note</button>
+
+    <h4>Notes</h4>
+    <div id="notesList"></div>
+
+    <br>
+    <button onclick="closeModal()">Close</button>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://xddyypxmdnqivdwmyitn.supabase.co";
+const SUPABASE_KEY = "sb_publishable_5IEp-AUoBO70aM3Wxw-s2w_ob7SXDgD";
+
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const columns = ["Backlog","To Do","In Progress","Review","Done","Cancelled"];
+
+let draggedId = null;
+let selectedTaskId = null;
+
+function initBoard() {
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+
+  columns.forEach(col => {
+    const column = document.createElement("div");
+    column.className = "column";
+
+    column.innerHTML = `
+      <h3>${col}</h3>
+      <div class="task-list" data-status="${col}"></div>
+    `;
+
+    const list = column.querySelector(".task-list");
+
+    list.ondragover = e => e.preventDefault();
+    list.ondrop = e => drop(e, col);
+
+    board.appendChild(column);
+  });
+
+  loadTasks();
+}
+
+async function loadTasks() {
+  const { data } = await client.from("tasks").select("*");
+
+  document.querySelectorAll(".task-list").forEach(l => l.innerHTML = "");
+
+  data.forEach(t => {
+    const el = document.createElement("div");
+    el.className = "task";
+
+    if (t.status === "Cancelled") {
+      el.classList.add("cancelled");
+    }
+
+    el.draggable = true;
+
+    el.innerHTML = `
+      <b>${t.title}</b>
+      <small>👤 ${t.assignee}</small>
+      <small>⚡ ${t.priority}</small>
+      <small>📅 ${t.start_date || "-"} → ${t.due_date || "-"}</small>
+    `;
+
+    el.ondragstart = () => draggedId = t.id;
+
+    el.onclick = () => {
+      selectedTaskId = t.id;
+
+      document.getElementById("edit_title").value = t.title || "";
+      document.getElementById("edit_assignee").value = t.assignee || "";
+      document.getElementById("edit_priority").value = t.priority || "Low";
+      document.getElementById("edit_due").value = t.due_date || "";
+
+      document.getElementById("modal").style.display = "block";
+
+      loadNotes();
+    };
+
+    const column = document.querySelector(`.task-list[data-status="${t.status}"]`);
+    if (column) column.appendChild(el);
+  });
+}
+
+async function drop(e, status) {
+  e.preventDefault();
+
+  await client.from("tasks")
+    .update({ status })
+    .eq("id", draggedId);
+
+  loadTasks();
+}
+
+async function addTask() {
+  const title = document.getElementById("title").value;
+  if (!title) return alert("Enter title");
+
+  await client.from("tasks").insert([{
+    title,
+    assignee: document.getElementById("assignee").value,
+    priority: document.getElementById("priority").value,
+    start_date: document.getElementById("start_date").value || null,
+    due_date: document.getElementById("due_date").value || null,
+    status: "Backlog"
+  }]);
+
+  loadTasks();
+}
+
+async function saveTaskEdits() {
+  const title = document.getElementById("edit_title").value;
+  const assignee = document.getElementById("edit_assignee").value;
+  const priority = document.getElementById("edit_priority").value;
+  const due = document.getElementById("edit_due").value || null;
+
+  const { error } = await client.from("tasks")
+    .update({
+      title,
+      assignee,
+      priority,
+      due_date: due
+    })
+    .eq("id", selectedTaskId);
+
+  if (error) {
+    alert("Update failed");
+    return;
+  }
+
+  closeModal();
+  loadTasks();
+}
+
+function closeModal() {
+  document.getElementById("modal").style.display = "none";
+}
+
+async function addNote() {
+  const content = document.getElementById("notesInput").value;
+  if (!content) return;
+
+  await client.from("task_notes").insert([{
+    task_id: selectedTaskId,
+    content
+  }]);
+
+  document.getElementById("notesInput").value = "";
+  loadNotes();
+}
+
+async function loadNotes() {
+  const { data } = await client
+    .from("task_notes")
+    .select("*")
+    .eq("task_id", selectedTaskId)
+    .order("created_at", { ascending: false });
+
+  const container = document.getElementById("notesList");
+  container.innerHTML = "";
+
+  data.forEach(n => {
+    container.innerHTML += `
+      <div>
+        <small>${new Date(n.created_at).toLocaleString()}</small>
+        <div>${n.content}</div>
+      </div>
+    `;
+  });
+}
+
+initBoard();
+</script>
+
+</body>
+</html>
