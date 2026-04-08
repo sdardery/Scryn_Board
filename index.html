@@ -7,8 +7,16 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 
 <style>
-body { font-family: Arial; background:#f4f5f7; margin:0; }
-.header { background:#111827; color:white; padding:15px; font-size:20px; }
+body { font-family: Arial; margin:0; background:#f4f5f7; }
+
+.header {
+  background:#111827;
+  color:white;
+  padding:15px;
+  font-size:20px;
+  display:flex;
+  justify-content:space-between;
+}
 
 .board {
   display:flex;
@@ -26,10 +34,7 @@ body { font-family: Arial; background:#f4f5f7; margin:0; }
   flex-direction:column;
 }
 
-.task-list {
-  flex:1;
-  min-height:50px;
-}
+.task-list { flex:1; min-height:50px; }
 
 .task {
   background:white;
@@ -39,15 +44,12 @@ body { font-family: Arial; background:#f4f5f7; margin:0; }
   cursor:grab;
 }
 
-.task small {
-  display:block;
-  color:#555;
-}
+.task small { display:block; color:#555; }
 
 .cancelled {
   text-decoration: line-through;
   opacity: 0.6;
-  background: #ffe5e5;
+  background:#ffe5e5;
 }
 
 button, input, select, textarea {
@@ -59,7 +61,24 @@ button, input, select, textarea {
 
 <body>
 
-<div class="header">🔥 Scryn Board</div>
+<!-- 🔐 LOGIN -->
+<div id="loginScreen" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#111827; color:white;">
+  <h2>🔐 Scryn Login</h2>
+
+  <input id="username" placeholder="Username">
+  <input id="password" type="password" placeholder="Password">
+
+  <button onclick="login()">Login</button>
+  <p id="loginError" style="color:red;"></p>
+</div>
+
+<!-- 🚀 APP -->
+<div id="app" style="display:none;">
+
+<div class="header">
+  🔥 Scryn Board 🚀
+  <button onclick="logout()">Logout</button>
+</div>
 
 <div>
 <input id="title" placeholder="Task Title">
@@ -76,16 +95,16 @@ button, input, select, textarea {
 <input type="date" id="start_date">
 <input type="date" id="due_date">
 
-<button onclick="addTask()">Add Task</button>
+<button onclick="addTask()">➕ Add Task</button>
 </div>
 
 <div class="board" id="board"></div>
 
-<!-- MODAL -->
+<!-- 🛠 MODAL -->
 <div id="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5);">
   <div onclick="event.stopPropagation()" style="background:white; padding:20px; width:500px; margin:80px auto; border-radius:10px; max-height:85vh; overflow:auto;">
     
-    <h3>Edit Task</h3>
+    <h3>🛠 Edit Task</h3>
 
     <label>Title</label>
     <input id="edit_title" style="width:100%">
@@ -94,7 +113,7 @@ button, input, select, textarea {
     <input id="edit_assignee" style="width:100%">
 
     <label>Priority</label>
-    <select id="edit_priority" style="width:100%">
+    <select id="edit_priority">
       <option>Low</option>
       <option>Medium</option>
       <option>High</option>
@@ -103,19 +122,21 @@ button, input, select, textarea {
     <label>Due Date</label>
     <input type="date" id="edit_due">
 
-    <button onclick="saveTaskEdits()">Save Changes</button>
+    <button onclick="saveTaskEdits()">💾 Save Changes</button>
 
     <hr>
 
     <textarea id="notesInput" placeholder="Add note..." style="width:100%;height:80px;"></textarea>
-    <button onclick="addNote()">Add Note</button>
+    <button onclick="addNote()">📝 Add Note</button>
 
-    <h4>Notes</h4>
+    <h4>📝 Notes</h4>
     <div id="notesList"></div>
 
     <br>
     <button onclick="closeModal()">Close</button>
   </div>
+</div>
+
 </div>
 
 <script>
@@ -129,6 +150,33 @@ const columns = ["Backlog","To Do","In Progress","Review","Done","Cancelled"];
 let draggedId = null;
 let selectedTaskId = null;
 
+function login() {
+  const u = document.getElementById("username").value;
+  const p = document.getElementById("password").value;
+
+  if (u === "admin" && p === "Scryn101!") {
+    localStorage.setItem("auth", "true");
+    showApp();
+  } else {
+    document.getElementById("loginError").innerText = "Wrong credentials";
+  }
+}
+
+function showApp() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  initBoard();
+}
+
+function logout() {
+  localStorage.removeItem("auth");
+  location.reload();
+}
+
+if (localStorage.getItem("auth") === "true") {
+  showApp();
+}
+
 function initBoard() {
   const board = document.getElementById("board");
   board.innerHTML = "";
@@ -137,10 +185,8 @@ function initBoard() {
     const column = document.createElement("div");
     column.className = "column";
 
-    column.innerHTML = `
-      <h3>${col}</h3>
-      <div class="task-list" data-status="${col}"></div>
-    `;
+    column.innerHTML = `<h3>${col}</h3>
+    <div class="task-list" data-status="${col}"></div>`;
 
     const list = column.querySelector(".task-list");
 
@@ -162,15 +208,13 @@ async function loadTasks() {
     const el = document.createElement("div");
     el.className = "task";
 
-    if (t.status === "Cancelled") {
-      el.classList.add("cancelled");
-    }
+    if (t.status === "Cancelled") el.classList.add("cancelled");
 
     el.draggable = true;
 
     el.innerHTML = `
-      <b>${t.title}</b>
-      <small>👤 ${t.assignee}</small>
+      <b>🧩 ${t.title}</b>
+      <small>👤 ${t.assignee || "-"}</small>
       <small>⚡ ${t.priority}</small>
       <small>📅 ${t.start_date || "-"} → ${t.due_date || "-"}</small>
     `;
@@ -190,18 +234,14 @@ async function loadTasks() {
       loadNotes();
     };
 
-    const column = document.querySelector(`.task-list[data-status="${t.status}"]`);
-    if (column) column.appendChild(el);
+    const col = document.querySelector(`.task-list[data-status="${t.status}"]`);
+    if (col) col.appendChild(el);
   });
 }
 
 async function drop(e, status) {
   e.preventDefault();
-
-  await client.from("tasks")
-    .update({ status })
-    .eq("id", draggedId);
-
+  await client.from("tasks").update({ status }).eq("id", draggedId);
   loadTasks();
 }
 
@@ -222,24 +262,12 @@ async function addTask() {
 }
 
 async function saveTaskEdits() {
-  const title = document.getElementById("edit_title").value;
-  const assignee = document.getElementById("edit_assignee").value;
-  const priority = document.getElementById("edit_priority").value;
-  const due = document.getElementById("edit_due").value || null;
-
-  const { error } = await client.from("tasks")
-    .update({
-      title,
-      assignee,
-      priority,
-      due_date: due
-    })
-    .eq("id", selectedTaskId);
-
-  if (error) {
-    alert("Update failed");
-    return;
-  }
+  await client.from("tasks").update({
+    title: document.getElementById("edit_title").value,
+    assignee: document.getElementById("edit_assignee").value,
+    priority: document.getElementById("edit_priority").value,
+    due_date: document.getElementById("edit_due").value || null
+  }).eq("id", selectedTaskId);
 
   closeModal();
   loadTasks();
@@ -275,14 +303,12 @@ async function loadNotes() {
   data.forEach(n => {
     container.innerHTML += `
       <div>
-        <small>${new Date(n.created_at).toLocaleString()}</small>
+        <small>🕒 ${new Date(n.created_at).toLocaleString()}</small>
         <div>${n.content}</div>
       </div>
     `;
   });
 }
-
-initBoard();
 </script>
 
 </body>
